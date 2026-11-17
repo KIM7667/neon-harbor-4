@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON HARBOR — an open-world crime game</title>
+<style>
+  :root {
+    --pink: #ff4fa3;
+    --cyan: #39d5ff;
+    --amber: #ffb454;
+    --ink: #f2f0ea;
+    --muted: #9aa3ab;
+    --panel: rgba(12, 16, 24, 0.82);
+    --hairline: rgba(255, 255, 255, 0.16);
+    --danger: #ff4747;
+    --good: #7dff9a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1218; color: var(--ink); font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  #game, #game canvas { position: fixed; inset: 0; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+
+  /* Top right: cash + clock */
+  #top-right { position: fixed; top: 16px; right: 20px; text-align: right; }
+  #cash { font-size: 28px; font-weight: 700; color: var(--amber); text-shadow: 0 2px 8px rgba(0,0,0,0.7); font-variant-numeric: tabular-nums; }
+  #clock { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+  #stars { font-size: 24px; letter-spacing: 3px; color: #5a6068; text-shadow: 0 2px 8px rgba(0,0,0,0.8); margin-top: 2px; }
+  #stars.hot { color: var(--danger); animation: pulse 0.7s infinite alternate; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.55; } }
+  #heat-track { margin: 4px 0 0 auto; width: 130px; height: 5px; background: rgba(0,0,0,0.55); border: 1px solid var(--hairline); border-radius: 3px; overflow: hidden; }
+  #heat-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffb454, #ff4747); transition: width 200ms linear; }
+
+  /* Minimap, top left */
+  #minimap-wrap { position: fixed; left: 20px; top: 16px; }
+  #minimap { width: 168px; height: 168px; border: 2px solid var(--hairline); border-radius: 50%; background: rgba(12,16,24,0.85); box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+  #minimap-label { text-align: center; font-size: 10px; letter-spacing: 0.28em; color: var(--muted); margin-top: 5px; }
+
+  /* Mission objective, under the minimap */
+  #objective-box { position: fixed; left: 20px; top: 210px; width: 280px; background: var(--panel); border: 1px solid var(--hairline); border-left: 3px solid var(--amber); border-radius: 6px; padding: 10px 12px; }
+  #objective-title { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: var(--amber); text-transform: uppercase; }
+  #objective { font-size: 13.5px; line-height: 1.45; margin-top: 3px; }
+
+  /* Bottom left: health */
+  #healthbox { position: fixed; left: 20px; bottom: 22px; width: 240px; }
+  #health-row { display: flex; align-items: baseline; gap: 8px; }
+  #health-num { font-size: 34px; font-weight: 700; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+  #health-tag { font-size: 11px; letter-spacing: 0.2em; color: var(--muted); }
+  #health-track { margin-top: 6px; height: 8px; background: rgba(0,0,0,0.55); border: 1px solid var(--hairline); border-radius: 4px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff4fa3, #ff8ac2); transition: width 150ms linear; }
+  #health-fill.low { background: var(--danger); }
+
+  /* Bottom right: speed + ammo */
+  #kitbox { position: fixed; right: 20px; bottom: 22px; text-align: right; }
+  #speed { font-size: 52px; font-weight: 700; line-height: 1; text-shadow: 0 2px 10px rgba(0,0,0,0.7); font-variant-numeric: tabular-nums; }
+  #speed-label { font-size: 11px; letter-spacing: 0.25em; color: var(--muted); }
+  #ammo-line { font-size: 15px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  /* Crosshair */
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 0; height: 0; display: none; }
+  #crosshair i { position: absolute; background: var(--ink); opacity: 0.95; box-shadow: 0 0 4px #000; }
+  #crosshair i:nth-child(1) { left: -1px; top: -14px; width: 2px; height: 8px; }
+  #crosshair i:nth-child(2) { left: -1px; top: 6px; width: 2px; height: 8px; }
+  #crosshair i:nth-child(3) { top: -1px; left: -14px; height: 2px; width: 8px; }
+  #crosshair i:nth-child(4) { top: -1px; left: 6px; height: 2px; width: 8px; }
+  #crosshair::after { content: ''; position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; background: var(--pink); border-radius: 50%; }
+
+  /* Hint line, bottom centre */
+  #hint { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--hairline); border-radius: 20px; padding: 6px 14px; white-space: nowrap; }
+
+  /* Feed, left under objective */
+  #feed { position: fixed; left: 20px; top: 300px; list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; width: 280px; }
+  #feed li { background: var(--panel); border: 1px solid var(--hairline); border-radius: 5px; padding: 7px 10px; font-size: 13px; transition: opacity 600ms linear; }
+  #feed li.danger { border-left: 3px solid var(--danger); }
+  #feed li.good { border-left: 3px solid var(--good); }
+  #feed li.info { border-left: 3px solid var(--cyan); }
+  #feed li.fade { opacity: 0.3; }
+
+  /* Centre banner */
+  #banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 300ms ease; pointer-events: none; }
+  #banner.on { opacity: 1; }
+  #banner-title { font-size: 40px; font-weight: 800; letter-spacing: 0.04em; text-shadow: 0 3px 18px rgba(0,0,0,0.8); }
+  #banner-sub { margin-top: 6px; font-size: 15px; color: var(--ink); text-shadow: 0 2px 8px rgba(0,0,0,0.8); max-width: 560px; }
+
+  #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,30,20,0.45) 100%); transition: opacity 300ms linear; }
+  #vignette.on { opacity: 1; }
+  #damage-flash { position: fixed; inset: 0; pointer-events: none; background: rgba(255,30,30,0.28); opacity: 0; }
+  #damage-flash.on { opacity: 1; }
+
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: linear-gradient(180deg, rgba(10,8,20,0.55), rgba(10,8,20,0.88)); z-index: 10; }
+  .overlay[hidden] { display: none; }
+  .panel { width: min(560px, 100%); padding: 36px; background: rgba(14, 18, 28, 0.92); border: 1px solid var(--hairline); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+  .panel h1 { margin: 0 0 4px; font-size: 46px; line-height: 1; font-weight: 800; letter-spacing: 0.02em; }
+  .panel h1 .neon { color: var(--pink); text-shadow: 0 0 24px rgba(255,79,163,0.7); }
+  .panel h1 .harbor { color: var(--cyan); text-shadow: 0 0 24px rgba(57,213,255,0.6); }
+  .panel .tagline { font-size: 13px; letter-spacing: 0.3em; color: var(--amber); text-transform: uppercase; margin: 0 0 16px; }
+  .panel p { margin: 0 0 18px; font-size: 15px; line-height: 1.6; color: var(--muted); }
+  .panel p b { color: var(--ink); }
+  .btn { font: inherit; font-weight: 700; padding: 13px 20px; border-radius: 8px; border: 1px solid var(--pink); background: var(--pink); color: #fff; cursor: pointer; margin-right: 10px; margin-bottom: 8px; }
+  .btn:hover { background: #ff6fb2; }
+  .btn.ghost { background: transparent; border-color: var(--hairline); color: var(--ink); }
+  .btn.ghost:hover { border-color: var(--ink); }
+  .keys { margin: 20px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; font-size: 13.5px; color: var(--muted); }
+  .keys li { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  kbd { min-width: 23px; padding: 2px 7px; border: 1px solid var(--hairline); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12px; text-align: center; color: var(--ink); background: rgba(255,255,255,0.06); }
+  #fatal { position: fixed; left: 12px; bottom: 12px; z-index: 50; color: #ffb0b0; font-size: 13px; background: rgba(0,0,0,0.7); padding: 8px 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" aria-hidden="true">
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="168" height="168"></canvas>
+    <div id="minimap-label">NEON HARBOR</div>
+  </div>
+  <div id="objective-box">
+    <div id="objective-title">Mission</div>
+    <div id="objective">—</div>
+  </div>
+  <div id="top-right">
+    <div id="cash">$250</div>
+    <div id="clock">17:00</div>
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="heat-track"><div id="heat-fill"></div></div>
+  </div>
+  <div id="healthbox">
+    <div id="health-row"><span id="health-num">100</span><span id="health-tag">HEALTH</span></div>
+    <div id="health-track"><div id="health-fill"></div></div>
+  </div>
+  <div id="kitbox">
+    <div id="speed"></div>
+    <div id="speed-label"></div>
+    <div id="ammo-line">P9 PISTOL · 12 / 60</div>
+  </div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hint"></div>
+  <ul id="feed"></ul>
+  <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+  <div id="vignette"></div>
+  <div id="damage-flash"></div>
+</div>
+
+<div id="start-overlay" class="overlay" hidden>
+  <section class="panel" role="dialog" aria-modal="true" aria-labelledby="title">
+    <h1 id="title"><span class="neon">NEON</span> <span class="harbor">HARBOR</span></h1>
+    <p class="tagline">An open-world crime story</p>
+    <p>You are <b>Rook Calloway</b>, fresh out of the Harbor lockup with $250, a pistol, and a debt to <b>Mara Voss</b>. Neon Harbor is yours to take: steal cars, outrun the PD, run four jobs for the crew, and own the city — on foot or behind the wheel.</p>
+    <button id="btn-new" class="btn" type="button">New Game</button>
+    <button id="btn-continue" class="btn ghost" type="button" hidden>Continue — saved game</button>
+    <ul class="keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move / drive · <kbd>Shift</kbd> Sprint · <kbd>Space</kbd> Handbrake</li>
+      <li><kbd>Mouse drag</kbd> Look around · <kbd>Click</kbd> Shoot (on foot) · <kbd>R</kbd> Reload</li>
+      <li><kbd>E</kbd> Enter / steal car · pick up · <kbd>F</kbd> Get out of car</li>
+      <li><kbd>Esc</kbd> Pause &amp; save · <kbd>M</kbd> Music on/off</li>
+    </ul>
+  </section>
+</div>
+
+<div id="pause-overlay" class="overlay" hidden>
+  <section class="panel" role="dialog" aria-modal="true">
+    <h1>Paused</h1>
+    <p class="tagline">Neon Harbor waits</p>
+    <p>Progress saves automatically after every mission. Save any time from here.</p>
+    <button id="btn-resume" class="btn" type="button">Resume</button>
+    <button id="btn-save" class="btn ghost" type="button">Save game</button>
+    <button id="btn-restart" class="btn ghost" type="button">Restart story</button>
+    <button id="btn-quit-menu" class="btn ghost" type="button">Main menu</button>
+  </section>
+</div>
+
+<div id="dead-overlay" class="overlay" hidden>
+  <section class="panel" role="dialog" aria-modal="true">
+    <h1>FLATLINED</h1>
+    <p class="tagline">The Harbor keeps what it takes</p>
+    <p>Rook wakes up at the safehouse, $100 lighter, with the cops off his back — for now.</p>
+    <button id="btn-respawn" class="btn" type="button">Wake up at the safehouse</button>
+  </section>
+</div>
+
+<div id="complete-overlay" class="overlay" hidden>
+  <section class="panel" role="dialog" aria-modal="true">
+    <h1>THE HARBOR IS YOURS</h1>
+    <p class="tagline">All four jobs done</p>
+    <p id="complete-stats"></p>
+    <p>Mara pours two glasses. The city lights come on, one street at a time — and every one of them answers to Rook now.</p>
+    <button id="btn-freeroam" class="btn" type="button">Keep playing — free roam</button>
+  </section>
+</div>
+
+<div id="fatal" hidden></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
